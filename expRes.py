@@ -1,7 +1,20 @@
-#            **MIT License**
-#
-#       Copyright (c) 2021 Luca Gagliardi 
-#   Affiliation Istituto Italiano di tecnologia
+                #            **GPL License**
+                #
+                #       Copyright (c) 2021 Luca Gagliardi 
+                #   Affiliation Istituto Italiano di tecnologia
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 #PROBLEM: hot to filter out atoms which are exposed towards internal cavities?
 # the option fill cavity seems to un-affect exposed list..
