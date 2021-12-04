@@ -126,8 +126,8 @@ def fetchRes(filename):
 
     comment =['#', 'CRYST[0-9]?']
     remark = ['REMARK']
-    termination = ['TER', 'END', '\n']
-    skip = comment+remark+termination
+    termination = ['TER', 'END']
+    skip = comment+remark
     skip = '(?:% s)' % '|'.join(skip)
 
 
@@ -167,22 +167,26 @@ def fetchRes(filename):
     chainInd = 4
     
     inFile.seek(0)
+    comments=[]
     for line in inFile: 
         if(re.match(skip,line)): 
+            comments.append(line)
             pass 
         else:   
-            lineg = re.match(matchPattern,line).groups()
-            if(isChainID):
-                content = {'resName':lineg[nameInd],'resNum':lineg[resInd],'atomNumber':int(lineg[1]),'resAtom': lineg[atomInd],'resChain':lineg[chainInd],
-                'charge':float(lineg[chargeInd]),'coord':list(map(float, lineg[coordInd:coordInd+3])),'radius':float(lineg[rInd])}
-            else:
-                content = {'resName':lineg[nameInd],'resNum':lineg[resInd],'atomNumber':int(lineg[1]),'resAtom': lineg[atomInd],'resChain':'A',
-                'charge':float(lineg[chargeInd]),'coord':list(map(float, lineg[coordInd:coordInd+3])),'radius':float(lineg[rInd])}
-            resMap.append(content)
+            match=re.match(matchPattern,line)
+            if match:
+                lineg = match.groups()
+                if(isChainID):
+                    content = {'resName':lineg[nameInd],'resNum':lineg[resInd],'atomNumber':int(lineg[1]),'resAtom': lineg[atomInd],'resChain':lineg[chainInd],
+                    'charge':float(lineg[chargeInd]),'coord':list(map(float, lineg[coordInd:coordInd+3])),'radius':float(lineg[rInd])}
+                else:
+                    content = {'resName':lineg[nameInd],'resNum':lineg[resInd],'atomNumber':int(lineg[1]),'resAtom': lineg[atomInd],'resChain':'A',
+                    'charge':float(lineg[chargeInd]),'coord':list(map(float, lineg[coordInd:coordInd+3])),'radius':float(lineg[rInd])}
+                resMap.append(content)
             # print(content)
     
     
-    return resMap
+    return resMap,comments
 
 class exposedFetcher(object):
     def __init__(self) -> None:
@@ -191,14 +195,17 @@ class exposedFetcher(object):
         self.indices=set()
         self.resMap =[]
         self.name =''
+        self.comments = ''
         self.structureInit=False
+        self.probeRadius =0 
     def setExposedAtoms(self,structure_name,rp=1.4,nThreads=1):
         self.name = structure_name
+        self.probeRadius = rp
         print('settung up configuration file NS')
         setup_NSInput(self.workingDir+self.conf,radius=rp,nThreads=nThreads,accTriang=False)
 
         print('setting up structure file %s for NS'%structure_name)
-        resMap = fetchRes(structure_name+'.pqr') #also produces NS input file by default
+        resMap,self.comments = fetchRes(structure_name+'.pqr') #also produces NS input file by default
         protein_atoms = np.empty((0,4))
         for i in resMap:
             c = np.append(np.asarray(i['coord']),i['radius'])
@@ -242,13 +249,20 @@ class exposedFetcher(object):
         return self.map
 
     def printExposedPQR(self):
+        if(not self.structureInit):
+            raise FileNotFoundError('The structure was not passed for analysis')
         outFile = open(self.name+'_exposed.pqr','w')
+        #COPY ORIGINAL COMMENTS IN PQR..
+        outFile.writelines(self.comments)
+        outFile.write('REMARK Subset of exposed atoms at probe radius %.2f\n'%self.probeRadius)
         for ind,r in enumerate(self.resMap):
             if ((r['resNum'],r['resName'],r['resChain']) in self.map):
-                outFile.write("{:<6s}{:>5d} {:<5s}{:>3s} {:1s}{:>5s}   {:>8.3f} {:>8.3f} {:>8.3f} {:>8.4f} {:>8.4f}\n".format('ATOM',ind+1,
+                outFile.write("{:<6s}{:>5d} {:<5s}{:>3s} {:1s}{:>5s}   {:>8.3f} {:>8.3f} {:>8.3f} {:>8.4f} {:>8.4f}\n".format('ATOM',r['atomNumber'],
                 r['resAtom'],r['resName'],r['resChain'],r['resNum'],r['coord'][0],r['coord'][1],r['coord'][2],r['charge'],r['radius']))
             else:
                 pass
+        outFile.write('TER\n')
+        outFile.write('END')
         outFile.close()
 def main():
     import getopt
@@ -266,42 +280,50 @@ def main():
     name=''
     argv = sys.argv[1:]
     nThreads=1
+    stdoutPrint = True
     try:
-        opts, args = getopt.getopt(argv,"h",["radius=","name=","save","savePQR","nThreads=","help"])
+        opts, args = getopt.getopt(argv,"h",["radius=","name=","saveRES","savePQR","nThreads=","help"])
     except getopt.GetoptError:
         print ('<<ERROR>> Uncorrect formatting of options or unavaible option')
         sys.exit(2)
 
-    print('options:',opts)
-    print('arguments:',args)
+    # print('options:',opts)
+    # print('arguments:',args)
+
     for opt, arg in opts:
         if opt in ["-h","--help"]:
             print('Standard usage:\npython3 expRes <options> <structure name>\n The structure must be in pqr format.\nOptions:')
             print('--name=<structure_name>: overwrites passed structure name' )
             print('--radius=<float>: Probe radius. Default 1.4 (water)')
-            print('--save: save to txt file exposed residue number, names and chain')
+            print('--saveRES: save to txt file exposed residue number, names and chain')
             print('--savePQR: save to pqr file exposed atoms of the original structure')
             print('or..\nIt can be used as an exteranl import with more functionalities available such as getting whatever subset of exposed residues or atoms via the function "checkExposed()"')
             input('\n')
             sys.exit()
         elif opt == '--radius':
             SES_RADIUS = float(arg)
-            print("OPTION: probe radius= %.2f"%SES_RADIUS)
+            print("Overwritten default probe radius (1.4) --> %.2f"%SES_RADIUS)
         elif opt == '--nThreads':
             nThreads = int(arg)
-            print("OPTION: number of threads = %d"%nThreads)
+            print("Overwritten default number of threads (1) --> %d"%nThreads)
         elif opt == '--save':
             saveFile = True
+            stdoutPrint = False
         elif opt == '--savePQR':
             savePQR = True
+            stdoutPrint = False
         elif opt=='--name':
             name=str(arg)
             match = re.match('([\w]*)',name) #accepts both <pqrname> and <pqrname.pqr>
             name=match.group(1)
-    if((len(args[0])>0)and (name=='')):
+            # print(name)
+    if((len(args)>0)and (name=='')):
         name=str(args[0])
         match = re.match('([\w]*)',name) #accepts both <pqrname> and <pqrname.pqr>
         name=match.group(1)
+    print("Structure to process:",name+'.pqr')
+    print("Probe radius= %.2f"%SES_RADIUS)
+    print("Number of threads= %d"%nThreads)
     input('continue?')
     exp = exposedFetcher()
     exp.setExposedAtoms(name,rp=SES_RADIUS,nThreads=nThreads)
@@ -316,10 +338,13 @@ def main():
             
             outFile.write(resid+"\t"+rname+' '+rChain+'\n')
         outFile.close()
+        print('Exposed residues saved in',name+'_exposed.pqr')
     if(savePQR):
         exp.printExposedPQR()
-    for r in resList:
-        print(r)
+        print('Exposed atoms saved in',name+'_resList.txt')
+    if(stdoutPrint):
+        for r in resList:
+            print(r)
 
 if __name__ == '__main__':
     try:
