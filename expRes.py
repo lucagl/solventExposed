@@ -341,7 +341,11 @@ def main():
     exp = exposedFetcher()
     exp.setExposedAtoms(name,rp=SES_RADIUS,nThreads=nThreads)
     res = exp.getExposed()
-    resList = sorted(res,key=lambda t:int(t[0])) #sort according to res number
+    try:
+        resList = sorted(res,key=lambda t:int(t[0])) #sort according to res number
+    except ValueError:
+        resList = sorted(res,key=lambda t:t[0]) #sort as a string if it contains number+letter )(ex. 32B)
+    # resList = sorted(res,key=lambda t: int(t[0]) if t[0].isdigit() else t[0])
     if(saveFile):
         outFile = open(name+'_resList.txt','w')
         for r in resList:
