@@ -211,7 +211,14 @@ class exposedFetcher(object):
         self.comments = ''
         self.structureInit=False
         self.probeRadius =0 
-    def setExposedAtoms(self,structure_name,rp=1.4,nThreads=1):
+    def reset(self):
+        self.resMap=[]
+        self.map = set()
+        self.indices = set()
+        self.structureInit = False
+    def setExposedAtoms(self,structure_name,rp=1.4,nThreads=1,reset=True):
+        if(reset):
+            self.reset()
         self.name = structure_name
         self.probeRadius = rp
         print('settung up configuration file NS')
